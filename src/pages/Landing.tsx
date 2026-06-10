@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { HeartIcon, InstagramIcon, FacebookIcon, EyeIcon } from '../ui/icons'
-import { getPhotoList, getProfilePhoto, toggleFavorite, useFavorites, getDisplayName, getInstagramUrl, getFacebookUrl } from '../state/store'
+import { getAllPhotos, getProfilePhoto, toggleFavorite, useFavorites, getDisplayName, getInstagramUrl, getFacebookUrl } from '../state/store'
 import Lightbox from '../components/Lightbox'
 
 const ABOUT_KEY = 'aboutText'
 
 export default function Landing() {
-  const photos = useMemo(() => getPhotoList(), [])
+  const photos = useMemo(() => getAllPhotos(), [])
   const profile = useMemo(() => getProfilePhoto(), [])
 
   const [mousePos, setMousePos] = useState({ x: 50, y: 50 })
@@ -167,4 +167,3 @@ export default function Landing() {
     </div>
   )
 }
-
