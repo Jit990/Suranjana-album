@@ -1,6 +1,24 @@
 import React, { useEffect, useState } from 'react'
-import { getAllPhotos, ABOUT_KEY, toggleFavorite, addUploadedPhoto, useFavorites, getProfilePhoto, setProfilePhoto, setAdminPassword, verifyAdminPassword, hasAdminPassword, getDisplayName, setDisplayName, getInstagramUrl, setInstagramUrl, getFacebookUrl, setFacebookUrl } from '../state/store'
-import { DownloadIcon, EyeIcon, HeartIcon, XIcon, UploadIcon, CameraIcon, LockIcon, UnlockIcon, SettingsIcon } from '../ui/icons'
+import {
+  getAllPhotos,
+  ABOUT_KEY,
+  toggleFavorite,
+  addUploadedPhoto,
+  removeUploadedPhoto,
+  useFavorites,
+  getProfilePhoto,
+  setProfilePhoto,
+  setAdminPassword,
+  verifyAdminPassword,
+  hasAdminPassword,
+  getDisplayName,
+  setDisplayName,
+  getInstagramUrl,
+  setInstagramUrl,
+  getFacebookUrl,
+  setFacebookUrl
+} from '../state/store'
+import { DownloadIcon, EyeIcon, HeartIcon, XIcon, UploadIcon, CameraIcon, LockIcon, UnlockIcon, SettingsIcon, TrashIcon } from '../ui/icons'
 
 type AuthState = 'idle' | 'locked' | 'unlocked'
 
@@ -434,6 +452,26 @@ export default function Admin() {
                     >
                       <DownloadIcon />
                     </button>
+
+                    {p.kind === 'upload' && (
+                      <button
+                        className="actionBtnUltra"
+                        onClick={async () => {
+                          try {
+                            await removeUploadedPhoto(p.id)
+                            // refresh counts + favorites state
+                            const nextPhotos = getAllPhotos().length
+                            setPhotoCounts(nextPhotos)
+                            setFavoritesCount(new Set(JSON.parse(localStorage.getItem('favoritesV1') || '[]')).size)
+                          } catch {
+                            alert('Failed to remove photo. Try again.')
+                          }
+                        }}
+                        title="Remove uploaded photo"
+                      >
+                        <TrashIcon />
+                      </button>
+                    )}
                   </div>
                   {isFav && <div className="favIndicator" />}
                 </div>

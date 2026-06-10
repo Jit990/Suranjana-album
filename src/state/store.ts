@@ -120,7 +120,7 @@ function safeUUID() {
 }
 
 export function getPhotoList(): Photo[] {
-  // Starter photos (existing /photo folder)
+  // Starter photos from Vite public folder: /public/images
   const candidates = [
     'WhatsApp Image 2026-06-08 at 12.29.28 PM.jpeg',
     'WhatsApp Image 2026-06-08 at 12.29.29 PM (1).jpeg',
@@ -140,7 +140,7 @@ export function getPhotoList(): Photo[] {
     return {
       id,
       kind: 'starter',
-      src: `/photo/${encodeURIComponent(fileName).replace(/%2F/g, '/')}`,
+      src: `/images/${encodeURIComponent(fileName).replace(/%2F/g, '/')}`,
       alt: formatPhotoName(fileName)
     }
   })
@@ -162,11 +162,11 @@ function getProfilePhotoFromStorage(): string | null {
   if (!profileId) return null
   // If it's a data URL (uploaded), use it directly, otherwise it's a file path
   if (profileId.startsWith('data:')) return profileId
-  return `/photo/${encodeURIComponent(profileId).replace(/%2F/g, '/')}`
+  return `/images/${encodeURIComponent(profileId).replace(/%2F/g, '/')}`
 }
 
 export function getProfilePhoto(): string {
-  return getProfilePhotoFromStorage() || '/photo/WhatsApp Image 2026-06-08 at 12.29.30 PM.jpeg'
+  return getProfilePhotoFromStorage() || '/images/WhatsApp Image 2026-06-08 at 12.29.30 PM.jpeg'
 }
 
 export async function setProfilePhoto(file: File): Promise<string> {
@@ -252,6 +252,40 @@ export async function addUploadedPhoto(file: File): Promise<Photo> {
     src: dataUrl,
     alt
   }
+}
+
+async function idbDeletePhotoById(id: string): Promise<void> {
+  const db = await openUploadDB()
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(UPLOAD_STORE_NAME, 'readwrite')
+    tx.objectStore(UPLOAD_STORE_NAME).delete(id)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+function normalizeUploadId(photoId: string) {
+  return photoId.startsWith('upload:') ? photoId.slice('upload:'.length) : photoId
+}
+
+export async function removeUploadedPhoto(photoId: string): Promise<void> {
+  const uploadId = normalizeUploadId(photoId)
+
+  // Remove from IndexedDB
+  await idbDeletePhotoById(uploadId)
+
+  // Remove from localStorage uploaded IDs
+  const existingIds = safeParseJSON<string[]>(localStorage.getItem(UPLOADED_IDS_KEY), [])
+  localStorage.setItem(UPLOADED_IDS_KEY, JSON.stringify(existingIds.filter((id) => id !== uploadId)))
+
+  // Also remove from favorites, since favorites reference the full photo id (`upload:<id>`)
+  const fullId = `upload:${uploadId}`
+  const raw = localStorage.getItem(FAVORITES_KEY)
+  const ids: string[] = safeParseJSON<string[]>(raw, [])
+  localStorage.setItem(
+    FAVORITES_KEY,
+    JSON.stringify(ids.filter((id) => id && id !== fullId))
+  )
 }
 
 export function getAllPhotos(): Photo[] {
