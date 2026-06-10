@@ -22,6 +22,8 @@ const UPLOAD_STORE_NAME = 'photos'
 
 const UPLOADED_IDS_KEY = 'uploadedPhotoIdsV1'
 const PROFILE_PHOTO_ID_KEY = 'profilePhotoIdV1'
+// Keep a localStorage cache of uploaded photo records so the app can read them synchronously
+const UPLOADED_PHOTOS_KEY = 'uploadedPhotosV1'
 
 type UploadedPhotoRecord = {
   id: string
@@ -146,6 +148,16 @@ export function getPhotoList(): Photo[] {
   })
 }
 
+function getUploadedPhotosSync(): Photo[] {
+  const records = safeParseJSON<UploadedPhotoRecord[]>(localStorage.getItem(UPLOADED_PHOTOS_KEY), [])
+  return records.map((r) => ({
+    id: `upload:${r.id}`,
+    kind: 'upload',
+    src: r.src,
+    alt: r.alt
+  }))
+}
+
 async function getUploadedPhotos(): Promise<Photo[]> {
   const ids = safeParseJSON<string[]>(localStorage.getItem(UPLOADED_IDS_KEY), [])
   const records = await idbGetPhotosByIds(ids)
@@ -241,10 +253,17 @@ export async function addUploadedPhoto(file: File): Promise<Photo> {
   const dataUrl = await fileToDataURL(file)
   const alt = formatPhotoName(file.name)
 
+  // Persist to IndexedDB (for larger/binary-safe storage)
   await idbPutPhoto({ id, src: dataUrl, alt })
 
+  // Update uploaded IDs list
   const existingIds = safeParseJSON<string[]>(localStorage.getItem(UPLOADED_IDS_KEY), [])
   localStorage.setItem(UPLOADED_IDS_KEY, JSON.stringify([...existingIds, id]))
+
+  // Also keep a synchronous cache in localStorage so the UI can read uploaded photos immediately
+  const existingRecords = safeParseJSON<UploadedPhotoRecord[]>(localStorage.getItem(UPLOADED_PHOTOS_KEY), [])
+  const newRecord: UploadedPhotoRecord = { id, src: dataUrl, alt }
+  localStorage.setItem(UPLOADED_PHOTOS_KEY, JSON.stringify([...existingRecords, newRecord]))
 
   return {
     id: `upload:${id}`,
@@ -255,7 +274,8 @@ export async function addUploadedPhoto(file: File): Promise<Photo> {
 }
 
 export function getAllPhotos(): Photo[] {
-  return getPhotoList()
+  // Combine starter photos with any uploaded photos stored in localStorage
+  return [...getPhotoList(), ...getUploadedPhotosSync()]
 }
 
 // Admin password protection
