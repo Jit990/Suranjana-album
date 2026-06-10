@@ -116,6 +116,17 @@ async function idbGetPhotosByIds(ids: string[]): Promise<UploadedPhotoRecord[]> 
   })
 }
 
+async function idbGetAllPhotos(): Promise<UploadedPhotoRecord[]> {
+  const db = await openUploadDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(UPLOAD_STORE_NAME, 'readonly')
+    const store = tx.objectStore(UPLOAD_STORE_NAME)
+    const req = store.getAll()
+    req.onsuccess = () => resolve((req.result as UploadedPhotoRecord[]) || [])
+    req.onerror = () => reject(req.error)
+  })
+}
+
 function safeUUID() {
   // simple unique id for uploads
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`
@@ -293,4 +304,54 @@ export function verifyAdminPassword(password: string): boolean {
 
 export function hasAdminPassword(): boolean {
   return !!localStorage.getItem(ADMIN_PASS_KEY)
+}
+
+// Automatic migration: if the new localStorage cache (uploadedPhotosV1) is empty but IndexedDB contains uploaded photos,
+// copy them into localStorage so older users see their uploads without a manual migration step.
+async function migrateIndexedDBToLocalCache(): Promise<void> {
+  try {
+    if (typeof window === 'undefined' || !('indexedDB' in window)) return
+
+    const cached = safeParseJSON<UploadedPhotoRecord[]>(localStorage.getItem(UPLOADED_PHOTOS_KEY), [])
+    if (cached && cached.length > 0) return // already migrated
+
+    // If there are explicitly stored uploaded IDs, try to fetch by IDs first
+    const ids = safeParseJSON<string[]>(localStorage.getItem(UPLOADED_IDS_KEY), [])
+    let records: UploadedPhotoRecord[] = []
+
+    if (ids && ids.length > 0) {
+      try {
+        records = await idbGetPhotosByIds(ids)
+      } catch (err) {
+        // fallback to fetching all
+        records = await idbGetAllPhotos()
+      }
+    } else {
+      records = await idbGetAllPhotos()
+    }
+
+    if (records && records.length > 0) {
+      localStorage.setItem(UPLOADED_PHOTOS_KEY, JSON.stringify(records))
+      localStorage.setItem(UPLOADED_IDS_KEY, JSON.stringify(records.map(r => r.id)))
+      console.info('Suranjana-album: migrated', records.length, 'uploaded photos into localStorage cache')
+      // Dispatch a storage event to notify other tabs/components
+      try {
+        window.dispatchEvent(new StorageEvent('storage', { key: UPLOADED_PHOTOS_KEY, newValue: JSON.stringify(records) }))
+      } catch (e) {
+        // Some browsers may restrict programmatic StorageEvent construction — ignore
+      }
+    }
+  } catch (err) {
+    // non-fatal — don't break the app
+    // eslint-disable-next-line no-console
+    console.warn('Suranjana-album: migration to localStorage cache failed', err)
+  }
+}
+
+// Run migration in background (non-blocking)
+if (typeof window !== 'undefined') {
+  // Delay slightly to avoid blocking initial render
+  setTimeout(() => {
+    migrateIndexedDBToLocalCache().catch(() => {})
+  }, 300)
 }
